@@ -1,0 +1,269 @@
+
+#include "DFRobot_C4001.h"
+#include <SPI.h>
+#include <Ethernet.h>
+
+#define SENSOR_A_SERIAL Serial2
+#define SENSOR_B_SERIAL Serial3
+
+DFRobot_C4001_UART radarA(&SENSOR_A_SERIAL, 9600);
+DFRobot_C4001_UART radarB(&SENSOR_B_SERIAL, 9600);
+
+byte mac[] = { 0xA8, 0x61, 0x0A, 0xAF, 0x05, 0xA3 };
+IPAddress ip(192, 168, 2, 2);
+IPAddress gateway(192, 168, 2, 1);
+IPAddress subnet(255, 255, 255, 0);
+
+IPAddress remoteIP(192, 168, 2, 1);
+const uint16_t remotePort = 54321;
+
+EthernetClient tcpClient;
+
+int prevStableA = 0;
+int lastReadA = 0;
+unsigned long stateChangeMillisA = 0;
+
+int prevStableB = 0;
+int lastReadB = 0;
+unsigned long stateChangeMillisB = 0;
+
+const unsigned long stableDelay = 1000; // 1s
+
+bool radarA_ok = false;
+bool radarB_ok = false;
+
+const uint8_t pinsCount = 8;
+const uint8_t inputPins[pinsCount] = {2,3,4,5,6,7,8,9};
+const unsigned long debounceMs = 50;
+
+uint8_t stableState[pinsCount];
+uint8_t lastRead[pinsCount];
+unsigned long lastChangeTime[pinsCount];
+
+bool sentInitialPins = false;
+const unsigned long startupDelayMs = 2000;
+
+// recheck every 30 seconds
+const unsigned long recheckIntervalMs = 30000;
+unsigned long lastRecheckMillis = 0;
+
+bool beginAndValidateRadar(DFRobot_C4001_UART &radar, const char *name, bool allowBegin);
+bool ensureTcpConnected(unsigned long timeoutMs = 500);
+void sendSensorStateA(int aState);
+void sendSensorStateB(int bState);
+void sendPinStateTCP(uint8_t pinIndex, int stateHighLow);
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("setup start");
+
+  SENSOR_A_SERIAL.begin(9600);
+  SENSOR_B_SERIAL.begin(9600);
+
+  Ethernet.begin(mac, ip, gateway, gateway, subnet);
+  delay(300);
+  Serial.print("IP ");
+  Serial.println(Ethernet.localIP());
+
+  // In setup we call begin() once but avoid other library calls to prevent blocking.
+  radarA_ok = beginAndValidateRadar(radarA, "A", true);
+  Serial.print("Radar A: ");
+  Serial.println(radarA_ok ? "found" : "not found");
+
+  radarB_ok = beginAndValidateRadar(radarB, "B", true);
+  Serial.print("Radar B: ");
+  Serial.println(radarB_ok ? "found" : "not found");
+
+  // Only configure if considered present (rare here since we return false in setup to avoid blocking)
+  if (radarA_ok) {
+    radarA.setSensorMode(eSpeedMode);
+    radarA.setDetectThres(11, 1200, 10);
+    radarA.setFrettingDetection(eON);
+  }
+
+  if (radarB_ok) {
+    radarB.setSensorMode(eSpeedMode);
+    radarB.setDetectThres(11, 1200, 10);
+    radarB.setFrettingDetection(eON);
+  }
+
+  for (uint8_t i = 0; i < pinsCount; ++i) {
+    pinMode(inputPins[i], INPUT_PULLUP);
+    lastRead[i] = digitalRead(inputPins[i]);
+    stableState[i] = lastRead[i];
+    lastChangeTime[i] = millis();
+    Serial.print("Pin ");
+    Serial.print(inputPins[i]);
+    Serial.print(": ");
+    Serial.println(stableState[i] == HIGH ? "HIGH (open)" : "LOW (pressed)");
+  }
+
+  Serial.println("setup complete");
+  lastRecheckMillis = millis();
+}
+
+void loop() {
+  unsigned long now = millis();
+
+  // periodic recheck WITHOUT calling begin() to avoid reinitializing Serial ports
+  if (recheckIntervalMs > 0 && (now - lastRecheckMillis) >= recheckIntervalMs) {
+    lastRecheckMillis = now;
+    if (!radarA_ok) {
+      radarA_ok = beginAndValidateRadar(radarA, "A", false);
+      Serial.print("Radar A: ");
+      Serial.println(radarA_ok ? "found" : "not found");
+      if (radarA_ok) {
+        radarA.setSensorMode(eSpeedMode);
+        radarA.setDetectThres(11, 1200, 10);
+        radarA.setFrettingDetection(eON);
+      }
+    }
+    if (!radarB_ok) {
+      radarB_ok = beginAndValidateRadar(radarB, "B", false);
+      Serial.print("Radar B: ");
+      Serial.println(radarB_ok ? "found" : "not found");
+      if (radarB_ok) {
+        radarB.setSensorMode(eSpeedMode);
+        radarB.setDetectThres(11, 1200, 10);
+        radarB.setFrettingDetection(eON);
+      }
+    }
+  }
+
+  unsigned long nowLoop = millis();
+
+  int currentA = 0;
+  if (radarA_ok) {
+    int tnumA = radarA.getTargetNumber();
+    currentA = (tnumA == 0) ? 0 : 1;
+  }
+  if (currentA != lastReadA) {
+    stateChangeMillisA = nowLoop;
+    lastReadA = currentA;
+  }
+  if (currentA != prevStableA && (nowLoop - stateChangeMillisA) >= stableDelay) {
+    prevStableA = currentA;
+    Serial.print("Sensor A: ");
+    Serial.println(prevStableA);
+    sendSensorStateA(prevStableA);
+  }
+
+  int currentB = 0;
+  if (radarB_ok) {
+    int tnumB = radarB.getTargetNumber();
+    currentB = (tnumB == 0) ? 0 : 1;
+  }
+  if (currentB != lastReadB) {
+    stateChangeMillisB = nowLoop;
+    lastReadB = currentB;
+  }
+  if (currentB != prevStableB && (nowLoop - stateChangeMillisB) >= stableDelay) {
+    prevStableB = currentB;
+    Serial.print("Sensor B: ");
+    Serial.println(prevStableB);
+    sendSensorStateB(prevStableB);
+  }
+
+  for (uint8_t i = 0; i < pinsCount; ++i) {
+    int reading = digitalRead(inputPins[i]);
+    if (reading != lastRead[i]) {
+      lastChangeTime[i] = nowLoop;
+      lastRead[i] = reading;
+    } else if ((nowLoop - lastChangeTime[i]) >= debounceMs && reading != stableState[i]) {
+      stableState[i] = reading;
+      Serial.print("Pin ");
+      Serial.print(inputPins[i]);
+      Serial.print(" -> ");
+      Serial.println(stableState[i] == HIGH ? "HIGH (open)" : "LOW (pressed)");
+      sendPinStateTCP(i, stableState[i]);
+    }
+  }
+
+  if (!sentInitialPins && (nowLoop >= startupDelayMs)) {
+    sentInitialPins = true;
+    for (uint8_t i = 0; i < pinsCount; ++i) {
+      Serial.print("Initial send pin ");
+      Serial.print(inputPins[i]);
+      Serial.print(": ");
+      Serial.println(stableState[i] == HIGH ? "HIGH (open)" : "LOW (pressed)");
+      sendPinStateTCP(i, stableState[i]);
+      delay(10);
+    }
+  }
+
+  delay(10);
+}
+
+// allowBegin==true: call begin() once in setup (but avoid other library calls here).
+// allowBegin==false: perform a lightweight loop-time probe (only getTargetNumber).
+bool beginAndValidateRadar(DFRobot_C4001_UART &radar, const char *name, bool allowBegin) {
+  if (allowBegin) {
+    // Call begin() once in setup, but don't call other methods here to avoid blocking.
+    bool began = radar.begin();
+    Serial.print(name);
+    Serial.print(" begin() -> ");
+    Serial.println(began ? "true" : "false");
+    // Return false to avoid treating the device as present solely based on begin().
+    // Presence detection will occur in loop via getTargetNumber().
+    return false;
+  } else {
+    // Loop-time check: consider present if target number > 0.
+    // NOTE: some library implementations may still block when hardware absent; if so,
+    // set recheckIntervalMs = 0 and remove revalidation.
+    int tnum = radar.getTargetNumber();
+    return (tnum > 0);
+  }
+}
+
+bool ensureTcpConnected(unsigned long timeoutMs) {
+  if (tcpClient.connected()) return true;
+  tcpClient.stop();
+  unsigned long start = millis();
+  while (millis() - start < timeoutMs) {
+    if (tcpClient.connect(remoteIP, remotePort)) return true;
+    delay(50);
+  }
+  return tcpClient.connected();
+}
+
+void sendSensorStateA(int aState) {
+  const uint8_t headerA = 100;
+  if (!ensureTcpConnected()) {
+    Serial.println("TCP connect failed (A)");
+    return;
+  }
+  uint8_t bufA[2] = { headerA, (uint8_t)(aState ? 1 : 0) };
+  tcpClient.write(bufA, 2);
+  tcpClient.flush();
+  Serial.print("Sent sensor A: ");
+  Serial.println(aState ? "present" : "absent");
+}
+
+void sendSensorStateB(int bState) {
+  const uint8_t headerB = 101;
+  if (!ensureTcpConnected()) {
+    Serial.println("TCP connect failed (B)");
+    return;
+  }
+  uint8_t bufB[2] = { headerB, (uint8_t)(bState ? 1 : 0) };
+  tcpClient.write(bufB, 2);
+  tcpClient.flush();
+  Serial.print("Sent sensor B: ");
+  Serial.println(bState ? "present" : "absent");
+}
+
+void sendPinStateTCP(uint8_t pinIndex, int stateHighLow) {
+  uint8_t value = (stateHighLow == HIGH) ? 0 : 1;
+  uint8_t packet[2] = { pinIndex, value };
+  if (!ensureTcpConnected()) {
+    Serial.print("TCP connect failed for pin ");
+    Serial.println(inputPins[pinIndex]);
+    return;
+  }
+  tcpClient.write(packet, 2);
+  tcpClient.flush();
+  Serial.print("Sent pin ");
+  Serial.print(inputPins[pinIndex]);
+  Serial.print(": ");
+  Serial.println(value ? "1 (pressed)" : "0 (open)");
+}
