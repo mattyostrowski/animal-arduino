@@ -31,11 +31,11 @@ RadarConfig cfgB = {31, 1234, 1000, 1, 2};
 
 
 byte mac[] = { 0xA8, 0x61, 0x0A, 0xAF, 0x05, 0xA3 };
-IPAddress ip(192, 168, 2, 2);
-IPAddress gateway(192, 168, 2, 1);
+IPAddress ip(192, 168, 0, 12);             // device static IP - change if needed
+IPAddress gateway(192, 168, 0, 11);        // remote gateway (your target device IP here)
 IPAddress subnet(255, 255, 255, 0);
-IPAddress remoteIP(192, 168, 2, 1);
-const uint16_t remotePort = 54321;
+IPAddress remoteIP(192, 168, 0, 11);       // this computer
+const uint16_t remotePort = 54321;        
 
 EthernetClient tcpClient;
 
