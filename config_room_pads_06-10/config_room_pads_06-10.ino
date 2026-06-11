@@ -286,20 +286,6 @@ void handleCmd(String s) {
     return;
   }
 
-  if (cmd == "setdelay") {
-    int sp2 = args.indexOf(' ');
-    if (sp2 > 0) {
-      c->trigDelaySec = args.substring(0, sp2).toFloat();
-      c->keepDelaySec = max(2.0f, args.substring(sp2 + 1).toFloat());
-      applyConfig(r, *c);
-      Serial.println("setDelay applied");
-      printReadback(name, r, *c);
-    } else {
-      Serial.println("Bad setDelay. Use: A setDelay trig_s keep_s");
-      printCommands();
-    }
-    return;
-  }
 
   Serial.println("Unknown command");
   printCommands();
