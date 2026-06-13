@@ -26,8 +26,8 @@ void sendPinStateTCP(uint8_t pinIndex, int stateHighLow);
 DFRobot_C4001_UART radarA(&SENSOR_A_SERIAL, 9600);
 DFRobot_C4001_UART radarB(&SENSOR_B_SERIAL, 9600);
 
-RadarConfig cfgA = {50, 11000, 10, 1, 2}; //min cm, max cm, threshold 0-100
-RadarConfig cfgB = {30, 11000, 10, 1, 2};
+RadarConfig cfgA = {30, 700, 10, 1, 2}; //min cm, max cm, threshold 0-100
+RadarConfig cfgB = {50, 1000, 10, 1, 2};
 
 
 byte mac[] = { 0xA8, 0x61, 0x0A, 0xAF, 0x05, 0xA3 };
@@ -53,7 +53,7 @@ uint8_t lastRead[pinsCount];
 unsigned long lastChangeTime[pinsCount];
 
 bool sentInitialPins = false;
-const unsigned long startupDelayMs = 2000;
+const unsigned long startupDelayMs = 1000;  //pinn setup delay
 
 bool ensureTcpConnected() {
   if (tcpClient.connected()) {
