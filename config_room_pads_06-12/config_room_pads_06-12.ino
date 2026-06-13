@@ -25,7 +25,7 @@ void sendPinStateTCP(uint8_t pinIndex, int stateHighLow);
 DFRobot_C4001_UART radarA(&SENSOR_A_SERIAL, 9600);
 DFRobot_C4001_UART radarB(&SENSOR_B_SERIAL, 9600);
 
-RadarConfig cfgA = {30, 700, 10, 1, 2};
+RadarConfig cfgA = {30, 900, 5, 1, 2};
 RadarConfig cfgB = {50, 1000, 10, 1, 2};
 
 byte mac[] = { 0xA8, 0x61, 0x0A, 0xAF, 0x05, 0xA3 };
@@ -40,8 +40,8 @@ EthernetClient tcpClient;
 int prevStableA = 0, lastReadA = 0;
 int prevStableB = 0, lastReadB = 0;
 unsigned long stateChangeMillisA = 0, stateChangeMillisB = 0;
-unsigned long radarOnDebounceMs = 1000;
-unsigned long radarOffDebounceMs = 1000;
+unsigned long radarOnDebounceMs = 500;
+unsigned long radarOffDebounceMs = 480000;
 
 const uint8_t pinsCount = 8;
 const uint8_t inputPins[pinsCount] = {2, 3, 4, 5, 6, 7, 8, 9};
