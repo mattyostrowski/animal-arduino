@@ -40,7 +40,8 @@ EthernetClient tcpClient;
 int prevStableA = 0, lastReadA = 0;
 int prevStableB = 0, lastReadB = 0;
 unsigned long stateChangeMillisA = 0, stateChangeMillisB = 0;
-unsigned long radarDebounceMs = 1000;
+unsigned long radarOnDebounceMs = 1000;
+unsigned long radarOffDebounceMs = 1000;
 
 const uint8_t pinsCount = 8;
 const uint8_t inputPins[pinsCount] = {2, 3, 4, 5, 6, 7, 8, 9};
@@ -77,7 +78,8 @@ void printStatus() {
   Serial.print("B targets="); Serial.print(tnumB);
   Serial.print(" state="); Serial.println(tnumB > 0 ? "PRESENT" : "ABSENT");
 
-  Serial.print("Radar debounce ms="); Serial.println(radarDebounceMs);
+  Serial.print("Radar ON debounce ms="); Serial.println(radarOnDebounceMs);
+  Serial.print("Radar OFF debounce ms="); Serial.println(radarOffDebounceMs);
   Serial.println();
 }
 
@@ -221,11 +223,20 @@ void handleCmd(String s) {
     return;
   }
 
-  if (lower.startsWith("radardebounce ")) {
-    unsigned long v = (unsigned long) max(0, lower.substring(14).toInt());
-    radarDebounceMs = v;
-    Serial.print("Radar debounce set to ");
-    Serial.print(radarDebounceMs);
+  if (lower.startsWith("radarondebounce ")) {
+    unsigned long v = (unsigned long) max(0, lower.substring(16).toInt());
+    radarOnDebounceMs = v;
+    Serial.print("Radar ON debounce set to ");
+    Serial.print(radarOnDebounceMs);
+    Serial.println(" ms");
+    return;
+  }
+
+  if (lower.startsWith("radaroffdebounce ")) {
+    unsigned long v = (unsigned long) max(0, lower.substring(17).toInt());
+    radarOffDebounceMs = v;
+    Serial.print("Radar OFF debounce set to ");
+    Serial.print(radarOffDebounceMs);
     Serial.println(" ms");
     return;
   }
@@ -305,7 +316,8 @@ void handleCmd(String s) {
 void printCommands() {
   Serial.println("Commands:");
   Serial.println("  status");
-  Serial.println("  radarDebounce ms");
+  Serial.println("  radarOnDebounce ms");
+  Serial.println("  radarOffDebounce ms");
   Serial.println("  A/B status");
   Serial.println("  A/B setRange min max thres");
   Serial.println("  A/B setTrig n");
@@ -379,14 +391,20 @@ void loop() {
     }
   }
 
-  if (currentA != prevStableA && (nowLoop - stateChangeMillisA) >= radarDebounceMs) {
-    prevStableA = currentA;
-    sendSensorStateA(prevStableA);
+  if (currentA != prevStableA) {
+    unsigned long requiredA = currentA ? radarOnDebounceMs : radarOffDebounceMs;
+    if ((nowLoop - stateChangeMillisA) >= requiredA) {
+      prevStableA = currentA;
+      sendSensorStateA(prevStableA);
+    }
   }
 
-  if (currentB != prevStableB && (nowLoop - stateChangeMillisB) >= radarDebounceMs) {
-    prevStableB = currentB;
-    sendSensorStateB(prevStableB);
+  if (currentB != prevStableB) {
+    unsigned long requiredB = currentB ? radarOnDebounceMs : radarOffDebounceMs;
+    if ((nowLoop - stateChangeMillisB) >= requiredB) {
+      prevStableB = currentB;
+      sendSensorStateB(prevStableB);
+    }
   }
 
   for (uint8_t i = 0; i < pinsCount; ++i) {
