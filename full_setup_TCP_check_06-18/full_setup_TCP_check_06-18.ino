@@ -51,7 +51,7 @@ int prevStableA = 0, lastReadA = 0;
 int prevStableB = 0, lastReadB = 0;
 unsigned long stateChangeMillisA = 0, stateChangeMillisB = 0;
 unsigned long radarOnDebounceMs = 250;
-unsigned long radarOffDebounceMs = 480000;
+unsigned long radarOffDebounceMs = 300000;
 
 const uint8_t pinsCount = 8;
 const uint8_t inputPins[pinsCount] = {2, 3, 4, 5, 6, 7, 8, 9};

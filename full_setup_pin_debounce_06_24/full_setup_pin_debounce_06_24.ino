@@ -24,12 +24,14 @@ void sendSensorStateA(int aState);
 void sendSensorStateB(int bState);
 void sendPinStateTCP(uint8_t pinIndex, int stateHighLow);
 void sendAllCurrentStates();
+void sendRoomSensorResetStates();
+
 
 DFRobot_C4001_UART radarA(&SENSOR_A_SERIAL, 9600);
 DFRobot_C4001_UART radarB(&SENSOR_B_SERIAL, 9600);
 
-RadarConfig cfgA = {30, 1000, 5, 1, 2};    //initial sensor ranges
-RadarConfig cfgB = {100, 750, 15, 1, 2};
+RadarConfig cfgA = {30, 1200, 20, 5, 0};    //initial sensor ranges
+RadarConfig cfgB = {100, 950, 20, 5, 2};
 
 byte mac[] = { 0xA8, 0x61, 0x0A, 0xAF, 0x05, 0xA3 };
 IPAddress ip(192, 168, 0, 12);
@@ -51,12 +53,12 @@ int prevStableA = 0, lastReadA = 0;
 int prevStableB = 0, lastReadB = 0;
 unsigned long stateChangeMillisA = 0, stateChangeMillisB = 0;
 unsigned long radarOnDebounceMs = 250;
-unsigned long radarOffDebounceMs = 480000;
+unsigned long radarOffDebounceMs = 400000;
 
 const uint8_t pinsCount = 8;
 const uint8_t inputPins[pinsCount] = {2, 3, 4, 5, 6, 7, 8, 9};
 unsigned long pinOnDebounceMs = 50;   // HIGH -> LOW (pressed)
-unsigned long pinOffDebounceMs = 30000;  // LOW -> HIGH (open)
+unsigned long pinOffDebounceMs = 40000;  // LOW -> HIGH (open)
 
 
 uint8_t stableState[pinsCount];
@@ -426,6 +428,12 @@ void printCommands() {
   Serial.println();
 }
 
+void sendRoomSensorResetStates() {
+  sendSensorStateA(0);
+  sendSensorStateB(0);
+}
+
+
 void setup() {
   Serial.begin(115200);
   unsigned long serialStart = millis();
@@ -449,6 +457,10 @@ void setup() {
   lastReadA = prevStableA = radarAConnected ? ((radarA.getTargetNumber() > 0) ? 1 : 0) : 0;
   lastReadB = prevStableB = radarBConnected ? ((radarB.getTargetNumber() > 0) ? 1 : 0) : 0;
   stateChangeMillisA = stateChangeMillisB = millis();
+
+  sendRoomSensorResetStates();
+  delay(50);
+
 
   if (radarAConnected) sendSensorStateA(prevStableA);
   if (radarBConnected) sendSensorStateB(prevStableB);
